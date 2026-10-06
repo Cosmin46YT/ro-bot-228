@@ -14,7 +14,7 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const PREFIX = process.env.PREFIX || ".";
-const PHONE_NUMBER = process.env.PHONE_NUMBER || "";
+const PHONE_NUMBER = process.env.PHONE_NUMBER || "40770811929";
 const DATA_FILE = path.join(__dirname, "data.json");
 const AUTH_DIR = path.join(__dirname, "auth_info");
 const MUSIC_DIR = path.join(__dirname, "music");
