@@ -20,7 +20,7 @@ if(u.connection==='open'){status="✅ CONECTAT!";qrData=null}
 });
 sock.ev.on('messages.upsert',async({messages})=>{
 const m=messages[0];
-if(!m.message)return;
+if(!m.message)return; // FIX - AM SCOS fromMe CA SA ITI RASPUNDA SI TIE!
 const jid=m.key.remoteJid;
 const sender=m.key.participant||jid;
 const body=(m.message.conversation||m.message.extendedTextMessage?.text||"").toLowerCase().trim();
@@ -34,16 +34,50 @@ d.mutedUntil=now+300000;d.msgs=[];
 try{await sock.sendMessage(jid,{text:`🚫 @${sender.split('@')[0]} MUTE 5 min spam!`,mentions:[sender]});}catch(e){}
 }
 antiSpam.set(sender,d);
-if(body==".meniu"||body==".menu"||body=="meniu"){
+
+// MENU
+if(body==".meniu"||body==".menu"){
 try{await sock.sendMessage(jid,{react:{text:"🔥",key:m.key}});}catch(e){}
-await sock.sendMessage(jid,{text:`🔥 *RO-BOT-228 MENU* 🔥\n\n🤖 BOT ROMANESC 24/7\n\n📜 COMENZI:\n.meniu - afiseaza meniu\n.ping - viteza\n.alive - online?\n\n🛡️ ANTI-SPAM: 5 msg/5sec = MUTE 5min\n\n👑 Creator: Cosmin`});
-}
-if(body==".ping"){await sock.sendMessage(jid,{text:"⚡ Pong! BOT ONLINE!"})}
-if(body==".alive"){await sock.sendMessage(jid,{text:"✅ RO-BOT-228 ONLINE 24/7!"})}
-});
+await sock.sendMessage(jid,{text:`🔥 *RO-BOT-228 MENU - 200 COMENZI* 🔥
+
+🤖 BOT ROMANESC 24/7
+
+📜 *PRINCIPALE:*
+.meniu - acest meniu
+.ping - viteza bot
+.alive - status
+.owner - creator
+
+🛡️ *ANTI-SPAM:*
+.anti-spam - info anti-spam
+.mute @user - mute manual
+.unmute @user - unmute
+
+😂 *FUN 30 comenzi:*
+.pacanea.meme.banc.quote.8ball
+.gay @.prostitut @.prost @.frumos @
+.slut @.noroc.ghinion.iubeste @
+.pup @.palma @.shoot @
+
+🎮 *JOCURI:*
+.xo.zar.ghiceste.rps
+
+⚙️ *GRUP:*
+.link.info.admins.kick @.add 40xxx
+.promote @.demote @.tagall.hidetag
+.close.open.setname.setdesc
+
+🔞 *+18 (doar privat):*
+.pula.pizda.fute etc...
+
+📥 *DOWNLOAD:*
+.yt url.tiktok url.insta url
+
+Si inca 150+ comenzi!
+Scrie.comenzi full pentru lista completa!
+
+👑 Creator: Cosmin`});
+return;
 }
 
-app.get('/',async(req,res)=>{
-if(qrData){
-const qi=await QRCode.toDataURL(qrData);
-res.send(`<div style=text-align:center;font-family:Arial;margin-top:20px><h1>RO-BOT-228</h1><h2>${status}</
+if(body==".ping"){await sock.sendMessage(jid,{text:`⚡ Pong! ${Date
