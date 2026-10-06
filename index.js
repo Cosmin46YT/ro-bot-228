@@ -1,280 +1,728 @@
-const express = require('express');
-const fs = require('fs');
-const app = express();
-const PORT = process.env.PORT || 3000;
-let qrData = null, status = "Se incarca...", sock = null;
-let eco = {}, afkList = {}, welcomeGroups = new Set();
+require("dotenv").config();
 
-const glume = ["De ce a traversat olteanul strada? Ca era RO-BOT-228 online!","Unu intra in bar cu botul, barmanu zice: Craiova power!","Care e diferenta dintre oltean si bot? Botul raspunde mai repede!"];
-const citate = ["Viata e frumoasa in Craiova - Cosmin","Oltenia nu e loc, e stare de spirit","Cine are bot, are putere!"];
-const intrebari = ["Ai fi in stare sa mananci ardei iute pentru 1000 lei?","Crezi in iubire la prima vedere?","Care e superputerea ta secreta?"];
-const adevar = ["Care e cel mai mare secret al tau?","Pe cine placi in secret?","Care e cea mai mare minciuna spusa?"];
-const provocari = ["Trimite un selfie acum!","Spune te iubesc primului contact!","Danseaza 10 sec si trimite video!"];
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+const yts = require("yt-search");
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  Browsers
+} = require("@whiskeysockets/baileys");
 
-function getEco(jid){ if(!eco[jid]) eco[jid]={bani:1000,xp:0,nivel:1,inventar:[],banca:0,ferma:{gaini:0},peste:0,minereu:0}; return eco[jid]; }
+const PREFIX = process.env.PREFIX || ".";
+const DATA_FILE = path.join(__dirname, "data.json");
 
-async function startBot(){
- if(!fs.existsSync('./auth')) fs.mkdirSync('./auth');
- const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
- const pino = require('pino');
- const { state, saveCreds } = await useMultiFileAuthState('./auth');
- sock = makeWASocket({ auth: state, logger: pino({level:'silent'}), browser:["RO-BOT-228","Chrome","1.0.0"] });
- sock.ev.on('creds.update', saveCreds);
- sock.ev.on('connection.update', u=>{
-  if(u.qr){ qrData=u.qr; status="Scaneaza QR sau COD"; }
-  if(u.connection==='close'){ const c=u.lastDisconnect?.error?.output?.statusCode; if(c!==DisconnectReason.loggedOut) setTimeout(startBot,3000); }
-  if(u.connection==='open'){ status="✅ ONLINE - 100+ COMENZI"; qrData=null; }
- });
+const MENU = `
+🧭 Comenzi disponibile:
+• .meniu — această listă
+• .ping — verifică dacă botul răspunde
+• .tagall — menționează membrii grupului
 
- sock.ev.on('messages.upsert', async({messages})=>{
-  const m=messages[0]; if(!m.message) return;
-  const jid=m.key.remoteJid; const pushName=m.pushName||"User";
-  const raw=(m.message.conversation||m.message.extendedTextMessage?.text||m.message.imageMessage?.caption||"").trim();
-  if(!raw.startsWith('.')) return;
-  const text=raw.toLowerCase(); const args=raw.slice(1).split(" "); const cmd=args[0].toLowerCase(); const q=args.slice(1).join(" ").trim();
-  const reply=async(t)=>{ await sock.sendMessage(jid,{text:t},{quoted:m}); };
+FUN:
+.noroc · .zar · .coinflip · .8ball · .ghiceste · .gluma · .citat · .dragoste · .compatibilitate · .horoscop · .slap · .hug · .kiss · .meme · .fact · .intrebare · .adevar · .provocare · .roast · .compliment
 
-  // ===== MENIU COMPLET - CUM VREI TU =====
-  if(text===".meniu"){
-   await sock.sendMessage(jid,{text:`🧭 *Comenzi disponibile:*
-•.meniu — această listă
-•.ping — verifică dacă botul răspunde
-•.tagall — menționează membrii grupului
+JOCURI:
+.xox · .spinzuratoare · .ghiceste-numarul · .rps · .quiz · .trivia · .matematica · .anagrama · .fazan · .cuvinte · .tictactoe · .blackjack · .poker · .slot · .ruleta · .zaruri · .ghicitoare · .puzzle · .labirint · .snake · .tetris · .2048 · .minesweeper · .connect4 · .battleship · .uno · .memory · .simon · .typing · .mathduel
 
-*FUN (20):*
-.noroc ·.zar ·.coinflip ·.8ball ·.ghiceste ·.gluma ·.citat ·.dragoste ·.compatibilitate ·.horoscop ·.slap ·.hug ·.kiss ·.meme ·.fact ·.intrebare ·.adevar ·.provocare ·.roast ·.compliment
+ECONOMIE & RPG:
+.balanta · .munca · .zilnic · .magazin · .cumpara · .inventar · .top · .nivel · .profil · .caseta · .jefuieste · .banca · .transfer · .pariaza · .loto · .ferma · .pescuieste · .mineaza · .quest · .clan
 
-*JOCURI (30):*
-.xox ·.spinzuratoare ·.ghiceste-numarul ·.rps ·.quiz ·.trivia ·.matematica ·.anagrama ·.fazan ·.cuvinte ·.tictactoe ·.blackjack ·.poker ·.slot ·.ruleta ·.zaruri ·.ghicitoare ·.puzzle ·.labirint ·.snake ·.tetris ·.2048 ·.minesweeper ·.connect4 ·.battleship ·.uno ·.memory ·.simon ·.typing ·.mathduel
+UTIL & GRUP:
+.afk · .poll · .vot · .reminder · .calc · .traduce · .vreme · .stire · .imagine · .sticker · .toimg · .audio · .yt · .tiktok · .insta · .qr · .scurtare · .parola · .color · .ascii · .reverse · .invers · .numara · .statistici · .info-grup · .link-grup · .promoveaza · .retrogradeaza · .kick · .welcome
 
-*ECONOMIE & RPG (20):*
-.balanta ·.munca ·.zilnic ·.magazin ·.cumpara ·.inventar ·.top ·.nivel ·.profil ·.caseta ·.jefuieste ·.banca ·.transfer ·.pariaza ·.loto ·.ferma ·.pescuieste ·.mineaza ·.quest ·.clan
+MEDIA & ANIME:
+.play · .anime · .manga · .waifu · .naruto · .onepiece · .akira
+`;
 
-*UTIL & GRUP (30):*
-.afk ·.poll ·.vot ·.reminder ·.calc ·.traduce ·.vreme ·.stire ·.imagine ·.sticker ·.toimg ·.audio ·.yt ·.tiktok ·.insta ·.qr ·.scurtare ·.parola ·.color ·.ascii ·.reverse ·.invers ·.numara ·.statistici ·.info-grup ·.link-grup ·.promoveaza ·.retrogradeaza ·.kick ·.welcome
+const randomFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-*MUSIC:*
-.play <nume> ·.play2 ·.versuri
-
-*ANIME (50+):*
-.waifu ·.neko ·.shinobu ·.megumin ·.awoo ·.cuddle ·.hug ·.kiss ·.slap ·.pat ·.anime ·.naruto ·.goku ·.luffy ·.rem ·.nezuko ·.gojo ·.sukuna
-
-👑 *Cosmin - Craiova | RO-BOT-228*
-Scrie.meniu2 pentru anime complet!`},{quoted:m});
+function ensureDataFile() {
+  if (!fs.existsSync(DATA_FILE)) {
+    const initial = {
+      users: {},
+      reminders: []
+    };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), "utf8");
   }
-  if(text===".meniu2"){
-   await reply(`🔥 *ANIME COMPLET:*
-SFW:.waifu.neko.shinobu.megumin.awoo.bully.cuddle.cry.hug.kiss.lick.pat.smug.bonk.yeet.blush.smile.wave.highfive.handhold.nom.bite.glomp.slap.kill.kick.happy.wink.poke.dance.cringe
-
-NARUTO:.naruto.sasuke.sakura.itachi.kakashi.hinata
-DRAGON BALL:.goku.vegeta.gohan.bulma
-ONE PIECE:.luffy.zoro.nami.sanji
-JUJUTSU:.gojo.sukuna.nobara.megumi
-DEMON SLAYER:.tanjiro.nezuko.zenitsu.inosuke
-RE:ZERO:.rem.ram.emilia.subaru
-
-MUSIC:.play manele - TRIMITE AUDIO!
-`);
-  }
-
-  // ===== FUN 20 =====
-  if(text===".ping") await reply("⚡ Pong! RO-BOT-228 ONLINE 24/7 Craiova! 100+ comenzi active!");
-  if(cmd==="noroc") await reply(`🍀 Noroc: ${Math.floor(Math.random()*100)}% ${Math.random()>0.5?'🔥 Zi buna!':'💀 Ai grija!'}`);
-  if(cmd==="zar") await reply(`🎲 Zar: ${Math.floor(Math.random()*6)+1}`);
-  if(cmd==="coinflip") await reply(Math.random()>0.5?"🪙 Cap!":"🪙 Pajura!");
-  if(cmd==="8ball"){ const r=["Da 100%","Nu","Poate","Sigur!","Niciodata","Intreaba mai tarziu","Fara indoiala!"]; await reply(`🎱 8Ball: ${r[Math.floor(Math.random()*r.length)]}`); }
-  if(cmd==="ghiceste") await reply(`🔮 Ghicesc: ${q||'Te iubeste cineva in secret!'} 😏`);
-  if(cmd==="gluma") await reply(`😂 ${glume[Math.floor(Math.random()*glume.length)]}`);
-  if(cmd==="citat") await reply(`📜 Citat: "${citate[Math.floor(Math.random()*citate.length)]}"`);
-  if(cmd==="dragoste"||cmd==="compatibilitate"){ const p=Math.floor(Math.random()*100); await reply(`❤️ Dragoste ${q||pushName} + cineva: ${p}% ${p>80?'💍 Casatorie!':p>50?'😍 Merge!':'💔 Nasol!'}`); }
-  if(cmd==="horoscop") await reply(`♈ Horoscop ${q||'Berbec'}: Azi ai noroc la bani si dragoste! 🍀💰❤️`);
-  if(["slap","hug","kiss"].includes(cmd)){ try{ const r=await fetch(`https://api.waifu.pics/sfw/${cmd}`); const d=await r.json(); await sock.sendMessage(jid,{image:{url:d.url},caption:`✨ ${cmd} ✨`},{quoted:m}); }catch(e){ await reply(`✨ ${cmd} ${q||''}`); } }
-  if(cmd==="meme") await reply("😂 Meme: Cand crezi ca repari botul si merge din prima! (niciodata 😂)");
-  if(cmd==="fact") await reply("🧠 Fact: Craiova are cei mai tari boti din Romania! RO-BOT-228!");
-  if(cmd==="intrebare") await reply(`❓ Intrebare: ${intrebari[Math.floor(Math.random()*intrebari.length)]}`);
-  if(cmd==="adevar") await reply(`🤫 Adevar: ${adevar[Math.floor(Math.random()*adevar.length)]}`);
-  if(cmd==="provocare") await reply(`🔥 Provocare: ${provocari[Math.floor(Math.random()*provocari.length)]}`);
-  if(cmd==="roast") await reply(`🔥 Roast pentru ${q||'tine'}: Esti atat de lent ca netul pe dial-up! 😂💀`);
-  if(cmd==="compliment") await reply(`💖 Compliment: ${q||'Tu'} esti cel mai tare din Craiova! 👑✨`);
-
-  // ===== JOCURI 30 =====
-  if(cmd==="xox"||cmd==="tictactoe") await reply("❌⭕ X si O:\n⬜⬜⬜\n⬜❌⬜\n⬜⬜⭕\nScrie.xox mijloc ca sa joci!");
-  if(cmd==="spinzuratoare"){ const cuv="CRAIOVA"; await reply(`🔤 Spanzuratoarea: ${cuv.split('').map(()=>" _ ").join('')} (6 litere) Ghiceste litera!.spinzuratoare a`); }
-  if(cmd==="ghiceste-numarul"){ const n=Math.floor(Math.random()*100)+1; await reply(`🔢 M-am gandit la un numar 1-100! Scrie.ghiceste-numarul ${n} ca sa ghicesti! (era ${n})`); }
-  if(cmd==="rps"){ const o=["piatra","hartie","foarfeca"]; const b=o[Math.floor(Math.random()*3)]; await reply(`✂️ Tu: ${q||'piatra'} vs Bot: ${b} -> ${b===q?'Egal!':'Bot castiga!'} `); }
-  if(cmd==="quiz"||cmd==="trivia") await reply("🧠 QUIZ: Care e capitala Romaniei? A) Craiova B) Bucuresti C) Cluj\nRaspunde.quiz b");
-  if(cmd==="matematica"||cmd==="mathduel"){ const a=Math.floor(Math.random()*20), b=Math.floor(Math.random()*20); await reply(`🧮 Cat face ${a}+${b}? Scrie.calc ${a+b}`); }
-  if(cmd==="anagrama"){ await reply("🔤 Anagrama: AVIOARC -> CRAIOVA! Ghicesti?"); }
-  if(cmd==="fazan") await reply(`🦜 Fazan: Trebuie sa zici cuvant care incepe cu ${q?.slice(-2)||'VA'}! Ex:.fazan vaca`);
-  if(cmd==="cuvinte") await reply("📝 Cuvinte: Scrie un cuvant lung!.cuvinte extraordinar");
-  if(cmd==="blackjack") await reply(`🃏 Blackjack: Tu 19 vs Bot 17 - Castigi! +100 lei!`);
-  if(cmd==="poker") await reply("♠️ Poker: Ai pereche de asi! Castigi!");
-  if(cmd==="slot"){ const e=["🍒","🍋","🔔","💎","7️⃣"]; const r=[e[Math.floor(Math.random()*5)],e[Math.floor(Math.random()*5)]]; await reply(`🎰 SLOT: ${r.join(' | ')} ${r[0]===r[1]&&r[1]===r[2]?'💰 JACKPOT +1000 lei!':''}`); }
-  if(cmd==="ruleta"){ const n=Math.floor(Math.random()*37); await reply(`🎰 Ruleta: ${n} ${n%2===0?'Negru':'Rosu'} ${n===0?'💚 0!':''}`); }
-  if(cmd==="zaruri") await reply(`🎲 Zaruri: ${Math.floor(Math.random()*6)+1} si ${Math.floor(Math.random()*6)+1} = ${Math.floor(Math.random()*11)+2}`);
-  if(cmd==="ghicitoare") await reply("🤔 Ghicitoare: Ce are chei dar nu deschide usi? R: Pianul!");
-  if(cmd==="puzzle") await reply("🧩 Puzzle: Mutare grea, dar Craiova rezolva tot!");
-  if(cmd==="labirint") await reply("🌀 Labirint:\n⬜⬛⬜\n⬜⬛⬜\n⬜⬜⬜\nMergi jos!");
-  if(cmd==="snake") await reply("🐍 Snake: Scor 150! Joc in lucru full!");
-  if(cmd==="tetris") await reply("🧱 Tetris: ████\n Scor 200!");
-  if(cmd==="2048") await reply("🔢 2048: 2 4 8 16 - Combina!");
-  if(cmd==="minesweeper") await reply("💣 Minesweeper: 💣⬜⬜\n⬜1️⃣⬜\n⬜⬜⬜");
-  if(cmd==="connect4") await reply("🔴🟡 Connect4: Pune piesa!.connect4 3");
-  if(cmd==="battleship") await reply("🚢 Battleship: A1 lovit! 💥");
-  if(cmd==="uno") await reply("🃏 UNO: Ai carte rosie 7! Urmatorul!");
-  if(cmd==="memory") await reply("🧠 Memory: 🍎 🍌 🍎 - Unde e perechea?");
-  if(cmd==="simon") await reply("🔵🔴🟢 Simon: Rosu, Albastru, Verde! Repeta!");
-  if(cmd==="typing"){ await reply("⌨️ Typing: Scrie repede 'Craiova e frumoasa'"); }
-
-  // ===== ECONOMIE 20 =====
-  if(cmd==="balanta"){ const u=getEco(jid); await reply(`💰 Balanta: ${u.bani} lei\n🏦 Banca: ${u.banca} lei\n⭐ Nivel: ${u.nivel} | XP: ${u.xp}`); }
-  if(cmd==="munca"){ const u=getEco(jid); u.bani+=250; u.xp+=10; if(u.xp>100){u.nivel++; u.xp=0;} await reply(`💼 Ai muncit la fabrica din Craiova! +250 lei! Total: ${u.bani} lei | XP +10`); }
-  if(cmd==="zilnic"){ const u=getEco(jid); u.bani+=500; await reply(`🎁 Bonus zilnic: +500 lei! Total: ${u.bani} lei! Revino maine!`); }
-  if(cmd==="magazin") await reply("🛒 MAGAZIN RO-BOT-228:\n1. 🍺 Bere - 10 lei -.cumpara bere\n2. 🚗 Logan - 20000 lei -.cumpara logan\n3. 🏠 Casa Craiova - 100k -.cumpara casa\n4. 👑 VIP - 5000 lei -.cumpara vip");
-  if(cmd==="cumpara"){ const u=getEco(jid); await reply(`✅ Ai cumparat ${q||'ceva'}! -100 lei! Inventar actualizat!`); u.inventar.push(q); u.bani-=100; }
-  if(cmd==="inventar"){ const u=getEco(jid); await reply(`🎒 Inventar: ${u.inventar.join(', ')||'Gol'} | Bani: ${u.bani}`); }
-  if(cmd==="top") await reply("🏆 TOP BOGATI Craiova:\n1. Cosmin - 999999 lei 👑\n2. Tu - in crestere! 💰\n3. RO-BOT-228 - infinit!");
-  if(cmd==="nivel"||cmd==="profil"){ const u=getEco(jid); await reply(`👤 Profil: ${pushName}\n💰 ${u.bani} lei\n🏦 Banca: ${u.banca}\n⭐ Nivel ${u.nivel} | XP ${u.xp}\n🎒 ${u.inventar.length} iteme`); }
-  if(cmd==="caseta"){ const p=Math.floor(Math.random()*1000); await reply(`📦 Caseta deschisa! Ai gasit ${p} lei! 💰`); }
-  if(cmd==="jefuieste") await reply(`🦹 Ai jefuit ${q||'pe cineva'}! Ai luat 100 lei! 💀 (gluma)`);
-  if(cmd==="banca"){ const u=getEco(jid); if(q.startsWith('depun')){ const s=parseInt(q.split(' ')[1])||100; u.bani-=s; u.banca+=s; await reply(`🏦 Depus ${s} lei! Banca: ${u.banca}`);} else await reply(`🏦 Banca ta: ${u.banca} lei\n.banca depune 100`); }
-  if(cmd==="transfer") await reply(`💸 Transfer ${q} - 100 lei trimisi! (simulare)`);
-  if(cmd==="pariaza"){ const win=Math.random()>0.5; await reply(win?`🎲 Pariu castigat! +${q||100} lei!`:`🎲 Pariu pierdut! -${q||100} lei!`); }
-  if(cmd==="loto"){ const n=Array(6).fill(0).map(()=>Math.floor(Math.random()*49)+1).join('-'); await reply(`🎟️ Loto 6/49: ${n}\nNoroc! 🍀`); }
-  if(cmd==="ferma"){ const u=getEco(jid); u.ferma.gaini++; await reply(`🚜 Ferma Craiova: ${u.ferma.gaini} gaini 🐔 | Oua: ${u.ferma.gaini*2} |.ferma vinde`); }
-  if(cmd==="pescuieste"){ const u=getEco(jid); u.peste++; await reply(`🎣 Ai pescuit! Ai prins un crap! 🐟 Total peste: ${u.peste}`); }
-  if(cmd==="mineaza"){ const u=getEco(jid); u.minereu++; await reply(`⛏️ Minezi la Rosia Montana! +1 minereu! Total: ${u.minereu}`); }
-  if(cmd==="quest") await reply("🗺️ QUEST: Munceste de 3 ori!.munca (0/3)\nRecompensa: 1000 lei!");
-  if(cmd==="clan") await reply("👥 Clan CRAIOVA: 👑 Cosmin (lider)\nTu (membru)\nNivel clan: 5 |.clan invita @cineva");
-
-  // ===== UTIL & GRUP 30 =====
-  if(cmd==="afk"){ afkList[jid]=q||"AFK"; await reply(`💤 ${pushName} e AFK: ${q||'fara motiv'}`); }
-  if(cmd==="poll"||cmd==="vot") await reply(`📊 POLL: ${q||'Craiova e cea mai tare?'}\n1️⃣ Da\n2️⃣ Nu\nVoteaza!.vot 1`);
-  if(cmd==="reminder") await reply(`⏰ Reminder setat: ${q||'peste 1h'} - Te anunt!`);
-  if(cmd==="calc"){ try{ await reply(`🧮 ${q} = ${eval(q)}`);}catch(e){ await reply("❌ Eroare calc. Ex:.calc 2+2*3"); } }
-  if(cmd==="traduce") await reply(`🌐 Traducere "${q}" -> (EN): Hello Craiova!`);
-  if(cmd==="vreme") await reply(`☁️ Vreme ${q||'Craiova'}: ☀️ 26°C | 💨 5km/h | 💧 40%\nPerfect pentru bot!`);
-  if(cmd==="stire") await reply(`📰 Stire: RO-BOT-228 a depasit 100 comenzi in Craiova! Oltenii domina WhatsApp!`);
-  if(cmd==="imagine"){ try{ await sock.sendMessage(jid,{image:{url:`https://picsum.photos/400/300`},caption:`🖼️ Imagine: ${q||'random'}`},{quoted:m}); }catch(e){ await reply("🖼️ Imagine generata!"); } }
-  if(cmd==="sticker") await reply("🖼️ Trimite poza cu caption.sticker ca sa fac sticker! (in lucru cu sharp)");
-  if(cmd==="toimg") await reply("🖼️ Convertesc sticker in imagine... (in lucru)");
-  if(cmd==="audio") await reply(`🎧 Audio: ${q||'mesaj vocal'} convertit!`);
-  if(cmd==="yt") await reply(`▶️ YouTube: Cauta "${q}" - https://youtube.com/results?search_query=${q}`);
-  if(cmd==="tiktok") await reply(`🎵 TikTok: ${q} - https://tiktok.com/search?q=${q}`);
-  if(cmd==="insta") await reply(`📸 Insta: ${q} - https://instagram.com/${q}`);
-  if(cmd==="qr") await reply(`🔳 QR pentru "${q||'RO-BOT-228'}" - vezi pe site!`);
-  if(cmd==="scurtare") await reply(`🔗 Link scurt: https://tinyurl.com/RO-BOT-CV -> ${q||'link-ul tau'}`);
-  if(cmd==="parola"){ const p=Math.random().toString(36).slice(-8); await reply(`🔑 Parola generata: ${p} - Puternica!`); }
-  if(cmd==="color") await reply(`🎨 Color ${q||'#25D366'}: Verde WhatsApp!`);
-  if(cmd==="ascii") await reply(`🔤 ASCII ${q||'Craiova'}:\n67 114 97 105 111 118 97`);
-  if(cmd==="reverse"||cmd==="invers") await reply(`🔄 Invers: ${q.split('').reverse().join('')}`);
-  if(cmd==="numara") await reply(`🔢 Numar caractere "${q||'test'}": ${q.length||4}`);
-  if(cmd==="statistici") await reply(`📊 Statistici bot:\n👥 Useri: ${Object.keys(eco).length}\n💬 Comenzi: 100+\n⏰ Uptime: 24/7\n📍 Craiova`);
-  if(cmd==="info-grup" && jid.endsWith('@g.us')){ const meta=await sock.groupMetadata(jid); await reply(`👥 Grup: ${meta.subject}\n👤 Membri: ${meta.participants.length}\n📅 Creat: ${new Date(meta.creation*1000).toLocaleDateString()}\n👑 Admini: ${meta.participants.filter(p=>p.admin).length}`); }
-  if(cmd==="link-grup" && jid.endsWith('@g.us')){ const code=await sock.groupInviteCode(jid); await reply(`🔗 Link grup: https://chat.whatsapp.com/${code}`); }
-  if(cmd==="promoveaza" && jid.endsWith('@g.us')) await reply(`⬆️ Promovat @${q} ca admin! (doar daca tu esti admin)`);
-  if(cmd==="retrogradeaza" && jid.endsWith('@g.us')) await reply(`⬇️ Retrogradat @${q} din admin!`);
-  if(cmd==="kick" && jid.endsWith('@g.us')) await reply(`👢 Kick @${q} din grup! (doar admin)`);
-  if(cmd==="welcome"){ welcomeGroups.add(jid); await reply(`👋 Welcome activat pentru grupul asta! Cand intra cineva ii zic bun venit!`); }
-
-  // ===== MUSIC PLAY - CU AUDIO REAL =====
-  if(cmd==="play"||cmd==="play2"||cmd==="yt"){
-   if(!q) return reply("🎵 Scrie:.play tanca /.play manele /.play eminem");
-   await reply(`🎵 Caut *${q}*... ⏳`);
-   try{
-    const yts=require('yt-search'); const s=await yts(q); const v=s.videos[0]; if(!v) return reply("❌ Nu am gasit!");
-    await sock.sendMessage(jid,{image:{url:v.thumbnail},caption:`🎵 *${v.title}*\n⏱️ ${v.timestamp} | 👀 ${v.views}\n🔗 ${v.url}\n\n⬇️ Descarc audio HD...`},{quoted:m});
-    const axios=require('axios');
-    try{
-     const api=`https://api.giftedtech.web.id/api/download/ytmp3?url=${encodeURIComponent(v.url)}&apikey=gifted`;
-     const r=await axios.get(api); const dl=r.data?.result?.download_url;
-     if(dl){
-      await sock.sendMessage(jid,{audio:{url:dl},mimetype:'audio/mpeg',ptt:false},{quoted:m});
-      await reply(`✅ *${v.title}* trimis! 🎧\n👑 RO-BOT-228 Craiova`);
-     }else throw new Error();
-    }catch(e){
-      // ===== MUSIC PLAY - FINAL REPARAT RENDER =====
-  if(cmd==="play"||cmd==="play2"||cmd==="yt"){
-   if(!q) return reply("🎵 Scrie:.play tanca /.play manele /.play eminem");
-   await reply(`🎵 Caut *${q}*... ⏳`);
-   try{
-    const yts=require('yt-search');
-    const s=await yts(q);
-    const v=s.videos[0];
-    if(!v) return reply("❌ Nu am gasit melodie!");
-
-    await sock.sendMessage(jid,{image:{url:v.thumbnail},caption:`🎵 *${v.title}*\n⏱️ ${v.timestamp} | 👀 ${v.views}\n🔗 ${v.url}\n\n⬇️ Descarc audio...`},{quoted:m});
-
-    try{
-     const ytdl = require('@distube/ytdl-core');
-     const fs = require('fs');
-     const path = require('path');
-     const os = require('os');
-
-     // Render vrea /tmp nu./
-     const filePath = path.join(os.tmpdir(), `${Date.now()}.mp3`);
-
-     console.log(`Descarc: ${v.url} -> ${filePath}`);
-
-     const stream = ytdl(v.url, {
-       filter: 'audioonly',
-       quality: 'highestaudio',
-       highWaterMark: 1 << 25
-     });
-
-     const writeStream = fs.createWriteStream(filePath);
-     stream.pipe(writeStream);
-
-     await new Promise((resolve, reject) => {
-       writeStream.on('finish', resolve);
-       writeStream.on('error', reject);
-       stream.on('error', reject);
-       setTimeout(()=>reject(new Error("timeout 25s")), 25000);
-     });
-
-     // Trimite audio - asa vrea Baileys
-     await sock.sendMessage(jid,{
-       audio: { url: filePath },
-       mimetype:'audio/mpeg',
-       fileName: `${v.title}.mp3`
-     },{quoted:m});
-
-     await reply(`✅ *${v.title}* trimis! 🎧\n👑 RO-BOT-228`);
-
-     // Sterge fisier
-     if(fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-    }catch(e){
-     console.log("Eroare ytdl:", e.message);
-     // FALLBACK - daca YouTube blocheaza ytdl
-     await reply(`🎵 *${v.title}*\n▶️ ${v.url}\n\n🎧 Deschide link-ul sa asculti! (YouTube blocheaza download direct pe Render, dar link-ul merge 100%)\n\nIncearca si.play2 cu alt API!`);
-    }
-
-   }catch(e){ console.log(e); await reply("❌ Eroare play, incearca alt nume!"); }
-  } 
-    }
-   }catch(e){ await reply("❌ Eroare play, incearca alt nume!"); }
-  }
-  if(cmd==="versuri") await reply(`🎤 Versuri ${q||'melodie'}:\nBax bag bani, fac bani... (versuri in lucru)`);
-
-  // ===== ANIME 50+ =====
-  if(["waifu","neko","shinobu","megumin","awoo","cuddle","hug","kiss","slap","pat","bully","cry","bonk","yeet","blush","smile","wave","highfive","handhold","nom","bite","glomp","slap","kill","kick","happy","wink","poke","dance","cringe","anime","naruto","goku","luffy","rem","nezuko","gojo","sukuna","tanjiro","zoro","sasuke","sakura","itachi","kakashi","vegeta","bulma","nami","sanji","hinata","ram","emilia"].includes(cmd)){
-   try{
-    let apiCmd=cmd; if(["naruto","goku","luffy","rem","nezuko","gojo","sukuna","sasuke","sakura","itachi","zoro","vegeta","bulma","nami"].includes(cmd)) apiCmd="waifu";
-    const res=await fetch(`https://api.waifu.pics/sfw/${apiCmd}`); const d=await res.json();
-    await sock.sendMessage(jid,{image:{url:d.url},caption:`✨ ${cmd.toUpperCase()} ✨\n🎌 Anime | 👑 RO-BOT-228 Craiova`},{quoted:m});
-   }catch(e){ await reply(`✨ ${cmd} - incearca din nou!`); }
-  }
-
- });
 }
 
-app.get('/', async(req,res)=>{
- let qrImg=""; if(qrData){ const QRCode=require('qrcode'); qrImg=await QRCode.toDataURL(qrData); }
- res.send(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#fff;font-family:Arial;text-align:center;padding:15px}.box{background:#111;border-radius:20px;padding:20px;max-width:420px;margin:auto;border:1px solid #222}input,button{padding:14px;width:90%;border-radius:12px;border:none;margin:6px 0}button{background:#25D366;color:#fff;font-weight:bold}code{font-size:10px;word-break:break-all}</style></head><body><div class="box"><h2>RO-BOT-228</h2><h3 style="color:#25D366">${status}</h3><p>100+ COMENZI ACTIVE</p>${qrImg? `<img src="${qrImg}" width="280"><p>Scaneaza QR</p>`:`<p>QR se genereaza... refresh 30s</p>`}<hr><input id="n" placeholder="407xxxxxxxx"><button onclick="gen()">GENEREAZA COD 8 CIFRE</button><div id="c"></div><p style="font-size:11px;opacity:0.5">.meniu.play.waifu.balanta.munca | Craiova</p></div><script>async function gen(){const n=document.getElementById('n').value; if(!n) return alert('nr'); document.getElementById('c').innerHTML='Se genereaza...'; const r=await fetch('/code?number='+n); const t=await r.text(); document.getElementById('c').innerHTML=t;} setTimeout(()=>location.reload(),30000);</script></body></html>`);
-});
-app.get('/code', async(req,res)=>{
- const num=req.query.number?.replace(/[^0-9]/g,''); if(!num) return res.send('Pune nr');
- try{ if(!sock) return res.send('Asteapta 5 sec'); const code=await sock.requestPairingCode(num); res.send(`<div style="background:#fff;color:#000;padding:12px;border-radius:12px"><h1 style="letter-spacing:5px">${code}</h1><p>WhatsApp > Dispozitive > Conecteaza cu nr</p></div>`);}catch(e){ res.send('Eroare:'+e.message); }
-});
-app.listen(PORT,()=>{ console.log('Live 100+ comenzi'); startBot(); });
+function readData() {
+  ensureDataFile();
+  return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+}
+
+function saveData(data) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
+}
+
+function getUser(senderId) {
+  const data = readData();
+  if (!data.users[senderId]) {
+    data.users[senderId] = {
+      balance: 1000,
+      level: 1,
+      xp: 0,
+      inventory: [],
+      lastDaily: null,
+      afk: false
+    };
+    saveData(data);
+  }
+  return data.users[senderId];
+}
+
+function addBalance(senderId, amount) {
+  const data = readData();
+  if (!data.users[senderId]) data.users[senderId] = getUser(senderId);
+  data.users[senderId].balance += amount;
+  saveData(data);
+  return data.users[senderId].balance;
+}
+
+function safeNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function reverseString(str) {
+  return String(str).split("").reverse().join("");
+}
+
+function parseExpression(expr) {
+  try {
+    return Function(`"use strict"; return (${expr})`)();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMeme() {
+  try {
+    const res = await axios.get("https://meme-api.com/gimme");
+    return res.data?.url || null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchJikan(type, query) {
+  try {
+    const url = `https://api.jikan.moe/v4/${type}?q=${encodeURIComponent(query)}&limit=1`;
+    const res = await axios.get(url);
+    return res.data?.data?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function searchYoutube(query) {
+  try {
+    const res = await yts(query);
+    if (!res?.videos?.length) return null;
+    return res.videos[0];
+  } catch {
+    return null;
+  }
+}
+
+async function tagAllInGroup(sock, groupJid) {
+  const metadata = await sock.groupMetadata(groupJid);
+  const participants = metadata.participants.map((p) => p.id);
+  const mentions = participants.map((id) => `@${id.replace(/@.*$/, "")}`).join(" ");
+  await sock.sendMessage(groupJid, {
+    text: `📢 ${metadata.subject}\n${mentions}`,
+    mentions: participants
+  });
+}
+
+async function handleCommand({ sock, msg, command, args, senderId, isGroup, groupJid }) {
+  const text = args.join(" ");
+
+  switch (command.toLowerCase()) {
+    case "ping":
+      return `🏓 Pong! Botul răspunde normal.`;
+
+    case "meniu":
+      return MENU;
+
+    case "tagall":
+      if (!isGroup) return "⚠️ Comanda funcționează doar în grup.";
+      await tagAllInGroup(sock, groupJid);
+      return null;
+
+    case "noroc":
+      return `🍀 Norocul tău: ${Math.floor(Math.random() * 101)}%`;
+
+    case "zar":
+      return `🎲 Ai dat: ${Math.floor(Math.random() * 6) + 1}`;
+
+    case "coinflip":
+      return Math.random() < 0.5 ? "🪙 Cap" : "🪙 Pajură";
+
+    case "8ball":
+      return randomFrom([
+        "Da.",
+        "Nu.",
+        "Probabil da.",
+        "Probabil nu.",
+        "Întreabă din nou mai târziu.",
+        "Nu pot prezice acum.",
+        "Sigur!",
+        "E foarte puțin probabil."
+      ]);
+
+    case "ghiceste":
+      if (!args[0]) return "🎯 Scrie un număr între 1 și 10. Exemplu: .ghiceste 5";
+      const guess = Number(args[0]);
+      const secret = Math.floor(Math.random() * 10) + 1;
+      return guess === secret
+        ? `🎉 Corect! Numărul era ${secret}.`
+        : `❌ Greșit! Numărul era ${secret}.`;
+
+    case "gluma":
+      return randomFrom([
+        "De ce nu merge calculatorul la plajă? Pentru că are prea multe programe de scăldat.",
+        "Ce spune un hard disk când e fericit? 'Am dat tot!'",
+        "Nu mă cert cu CPU-ul... e prea intens.",
+        "Calculatorul meu e foarte bun la glume: are 64 de joke cores."
+      ]);
+
+    case "citat":
+      return randomFrom([
+        "Success is the sum of small efforts, repeated day in and day out.",
+        "Nu există drumuri fără obstacole, există doar oameni fără perseverență.",
+        "Visează mare, începe mic, dar începe.",
+        "Fără acțiune, nu există progres."
+      ]);
+
+    case "dragoste":
+      return randomFrom([
+        "Ești ca o lumină bună în ziua mea gri.",
+        "Ai un zâmbet care face totul mai ușor.",
+        "Ai ceva special care mă face să zâmbesc fără să vreau.",
+        "Îmi place cum te simți în preajma mea."
+      ]);
+
+    case "compatibilitate":
+      return randomFrom([
+        "Compatibilitate foarte bună! Voi formați o pereche tare!",
+        "Ai o chimie bună, dar mai trebuie puțină răbdare.",
+        "Sunteți diferiți, dar exact asta face relația interesantă.",
+        "Ați avea o relație stabilă dacă veți comunica sincer."
+      ]);
+
+    case "horoscop":
+      return randomFrom([
+        "Astăzi vei avea o zi plină de șanse și idei bune.",
+        "Fii atent la oportunitățile care apar la finalul zilei.",
+        "Pace interioară și claritate vor veni după o discuție sinceră.",
+        "Nu-ți grăbi deciziile: ziua este bună pentru evaluare."
+      ]);
+
+    case "slap":
+      return randomFrom([
+        "💥 A luat o palmă de la destin!",
+        "😆 Un slap cât o poveste!",
+        "💥 A fost un slap de neuitat!"
+      ]);
+
+    case "hug":
+      return randomFrom([
+        "🤗 Îți dau un îmbrățișare caldă!",
+        "🤗 Hugs și zâmbete!",
+        "🤗 Te îmbrățișez virtual!"
+      ]);
+
+    case "kiss":
+      return randomFrom([
+        "💋 Un sărut magic și pufos!",
+        "💋 Pupici virtuali, pentru zâmbetul tău!",
+        "💋 Un mic sărut din universul digital!"
+      ]);
+
+    case "meme":
+      const memeUrl = await fetchMeme();
+      if (memeUrl) {
+        await sock.sendMessage(groupJid || senderId, { image: { url: memeUrl } });
+        return null;
+      }
+      return "😄 Nu am găsit un meme în acest moment.";
+
+    case "fact":
+      return randomFrom([
+        "În jur de 70% din corpul uman este apă.",
+        "Orezul este unul dintre cele mai vechi culturi agricole.",
+        "Pământul se mișcă aproximativ 1.000 de mile pe oră.",
+        "Banii din jurul tău nu te fac mai bogat dacă nu-i cheltuiești cu sens."
+      ]);
+
+    case "intrebare":
+      return "Întrebă-mă orice și o să-ți răspund cât pot!";
+
+    case "adevar":
+      return randomFrom([
+        "Adevărul e adesea complicat, dar important.",
+        "Ceea ce contează nu e cât de greu e, ci cât de mult vrei să-l depășești.",
+        "Adevărul este cel mai bun ghid.",
+        "Uneori adevărul doare, dar previne mai multe răni."
+      ]);
+
+    case "provocare":
+      return randomFrom([
+        "Încearcă să termini o sarcină înainte să termini muzica!",
+        "Fă două lucruri bune în aceeași zi și marchează-le.",
+        "Provocarea de azi: fii mai curajos decât ieri.",
+        "Creează un obiectiv simplu și îndeplinește-l chiar acum."
+      ]);
+
+    case "roast":
+      return randomFrom([
+        "Ai atâta energie că și wifi-ul ar vrea să te copieze.",
+        "Ești atât de unic, încât aproape că ai nevoie de o etichetă de siguranță.",
+        "Ai un stil de a vorbi din care se vede că ai fost educat de internet.",
+        "Dacă entuziasmul ar fi putere, ai fi sursa principală a energiei."
+      ]);
+
+    case "compliment":
+      return randomFrom([
+        "Ești o persoană foarte inteligentă și plăcută.",
+        "Ai o energie bună care luminează încăperea.",
+        "Ai un mod de a vorbi foarte liniștitor și calm.",
+        "Ești extrem de inspirat și prea bun la ceea ce faci."
+      ]);
+
+    case "rps":
+      const choices = ["piatră", "hârtie", "foarfece"];
+      const botChoice = randomFrom(choices);
+      const userChoice = (args[0] || "").toLowerCase();
+      if (!choices.includes(userChoice)) {
+        return `✊ 🖐 ✌️ Alege dintre: ${choices.join(", ")}`;
+      }
+      const winMap = {
+        piatră: "foarfece",
+        hârtie: "piatră",
+        foarfece: "hârtie"
+      };
+      const result =
+        userChoice === botChoice
+          ? "Egalitate!"
+          : winMap[userChoice] === botChoice
+            ? "Ai câștigat!"
+            : "Ai pierdut!";
+      return `🤖 Botul a ales: ${botChoice}\n${result}`;
+
+    case "xox":
+      return "❌⭕️ X și O: .xox A1";
+
+    case "spinzuratoare":
+      return "🕵️ Jocul Spânzurătoarea este activ în versiune beta.";
+
+    case "ghiceste-numarul":
+      return "🔢 Ghicire număr: .ghiceste-numarul 42";
+
+    case "quiz":
+      return "🧠 Quiz: .quiz <întrebare>";
+
+    case "trivia":
+      return "📚 Trivia: .trivia <subiect>";
+
+    case "matematica":
+      if (!args[0]) return "🧮 Folosește: .matematica 12+7*3";
+      const mathr = parseExpression(args.join(" "));
+      return mathr === null ? "❌ Expresie invalidă." : `🧮 Rezultat: ${mathr}`;
+
+    case "anagrama":
+      return "✍️ Anagramă: .anagrama cuvant";
+
+    case "fazan":
+      return "🃏 Fazan: joc de cărți simplu, în curând.";
+
+    case "cuvinte":
+      return "📝 Cuvinte: .cuvinte <text>";
+
+    case "tictactoe":
+      return "⭕️ Tic Tac Toe: .tictactoe A1";
+
+    case "blackjack":
+      return "🂡 Blackjack: prototip activ.";
+
+    case "poker":
+      return "♠️ Poker: prototip activ.";
+
+    case "slot":
+      return "🎰 Slot: .slot";
+
+    case "ruleta":
+      return "🎡 Ruletă: .ruleta roșu";
+
+    case "zaruri":
+      return "🎲 Zaruri: .zaruri 2d6";
+
+    case "ghicitoare":
+      return "🔍 Ghicitoare: .ghicitoare";
+
+    case "puzzle":
+      return "🧩 Puzzle: .puzzle";
+
+    case "labirint":
+      return "🧭 Labirint: .labirint";
+
+    case "snake":
+      return "🐍 Snake: .snake";
+
+    case "tetris":
+      return "🧱 Tetris: .tetris";
+
+    case "2048":
+      return "🔢 2048: .2048";
+
+    case "minesweeper":
+      return "💣 Minesweeper: .minesweeper";
+
+    case "connect4":
+      return "🔴🟡 Connect 4: .connect4";
+
+    case "battleship":
+      return "🚢 Battleship: .battleship";
+
+    case "uno":
+      return "🃏 Uno: .uno";
+
+    case "memory":
+      return "🧠 Memory: .memory";
+
+    case "simon":
+      return "🎵 Simon: .simon";
+
+    case "typing":
+      return "⌨️ Typing: .typing";
+
+    case "mathduel":
+      return "⚔️ Math Duel: .mathduel 12*3";
+
+    case "balanta":
+      return `💰 Balanța ta: ${getUser(senderId).balance} monede`;
+
+    case "munca":
+      const wage = Math.floor(Math.random() * 200) + 50;
+      const newBalance = addBalance(senderId, wage);
+      return `💼 Ai muncit și ai câștigat ${wage} monede.\n💰 Balanță: ${newBalance}`;
+
+    case "zilnic":
+      const user = getUser(senderId);
+      const reward = 250;
+      const now = Date.now();
+      if (user.lastDaily && now - user.lastDaily < 86400000) {
+        return "⏳ Ai primit deja bonusul zilnic. Încearcă din nou mai târziu.";
+      }
+      user.lastDaily = now;
+      user.balance += reward;
+      const allData = readData();
+      allData.users[senderId] = user;
+      saveData(allData);
+      return `🎁 Bonus zilnic primit: +${reward} monede.\n💰 Total: ${user.balance}`;
+
+    case "magazin":
+      return "🛍️ Magazin: .cumpara <item>\nDisponibile: armă, scut, potiune, baghetă";
+
+    case "cumpara":
+      if (!args[0]) return "🛍️ Ce vrei să cumperi? .cumpara armă";
+      const item = args[0].toLowerCase();
+      const costs = { armă: 200, scut: 150, potiune: 100, baghetă: 180 };
+      const buyer = getUser(senderId);
+      const cost = costs[item] || 0;
+      if (!cost) return "❌ Item inexistent.";
+      if (buyer.balance < cost) return "❌ Nu ai destui bani.";
+      buyer.balance -= cost;
+      buyer.inventory.push(item);
+      const data = readData();
+      data.users[senderId] = buyer;
+      saveData(data);
+      return `✅ Ai cumpărat: ${item} pentru ${cost} monede.`;
+
+    case "inventar":
+      const invUser = getUser(senderId);
+      return `🎒 Inventar: ${invUser.inventory.length ? invUser.inventory.join(", ") : "gol"}`;
+
+    case "top":
+      const users = readData().users;
+      const sorted = Object.entries(users)
+        .sort((a, b) => b[1].balance - a[1].balance)
+        .slice(0, 5);
+      return sorted.length
+        ? `🏆 Top utilizatori:\n${sorted.map(([id, u], index) => `${index + 1}. ${id}: ${u.balance} monede`).join("\n")}`
+        : "Nu există utilizatori încă.";
+
+    case "nivel":
+      const lvl = getUser(senderId);
+      return `📈 Nivel: ${lvl.level} | XP: ${lvl.xp}`;
+
+    case "profil":
+      const profile = getUser(senderId);
+      return `👤 Profil:\nBalanță: ${profile.balance}\nNivel: ${profile.level}\nXP: ${profile.xp}\nInventar: ${profile.inventory.length}`;
+
+    case "caseta":
+      return "📦 Casetă: .caseta";
+
+    case "jefuieste":
+      return "🕵️ Jefuiește: .jefuieste @user";
+
+    case "banca":
+      return "🏦 Banca: depozit / extras / transfer";
+
+    case "transfer":
+      return "💸 Transfer: .transfer @user 100";
+
+    case "pariaza":
+      return "🎲 Pariază: .pariaza 100";
+
+    case "loto":
+      return "🎟️ Loto: .loto 7";
+
+    case "ferma":
+      return "🌾 Fermă: .ferma";
+
+    case "pescuieste":
+      return "🎣 Pescuiește: .pescuieste";
+
+    case "mineaza":
+      return "⛏️ Minează: .mineaza";
+
+    case "quest":
+      return "📜 Quest: .quest";
+
+    case "clan":
+      return "👥 Clan: .clan create | info | membri";
+
+    case "afk":
+      const afkUser = getUser(senderId);
+      afkUser.afk = true;
+      const afkData = readData();
+      afkData.users[senderId] = afkUser;
+      saveData(afkData);
+      return "💤 Ai fost marcat AFK.";
+
+    case "poll":
+      return "📊 Poll: .poll Ce preferi? A / B";
+
+    case "vot":
+      return "🗳️ Vot: .vot <opțiune>";
+
+    case "reminder":
+      return "⏰ Reminder: .reminder 15m Hai să lucrezi.";
+
+    case "calc":
+      if (!args[0]) return "🧮 Scrie expresia: .calc 12+7*3";
+      const calcResult = parseExpression(args.join(" "));
+      return calcResult === null ? "❌ Expresie invalidă." : `🧮 Rezultat: ${calcResult}`;
+
+    case "traduce":
+      return "🌍 Traduce: .traduce en Hai";
+
+    case "vreme":
+      return "🌦️ Vreme: .vreme București";
+
+    case "stire":
+      return "📰 Stire: .stire tehnologie";
+
+    case "imagine":
+      return "🖼️ Imagine: .imagine un peisaj frumos";
+
+    case "sticker":
+      return "🪄 Sticker: atașează o imagine și folosește .sticker";
+
+    case "toimg":
+      return "🖼️ ToIMG: .toimg <sticker>";
+
+    case "audio":
+      return "🔊 Audio: .audio <link>";
+
+    case "yt":
+      if (!args.length) return "🎵 YouTube: .yt <caută melodie>";
+      const ytRes = await searchYoutube(args.join(" "));
+      if (!ytRes) return "❌ Nu am găsit rezultate.";
+      return `🎵 ${ytRes.title}\n🔗 ${ytRes.url}`;
+
+    case "tiktok":
+      return "🎬 TikTok: .tiktok <link sau nume>";
+
+    case "insta":
+      return "📷 Instagram: .insta <nume sau link>";
+
+    case "qr":
+      if (!args[0]) return "📱 Creează un QR: .qr https://example.com";
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(args.join(" "))}`;
+      await sock.sendMessage(groupJid || senderId, { image: { url: qrUrl } });
+      return null;
+
+    case "scurtare":
+      if (!args[0]) return "🔗 Folosește: .scurtare https://example.com";
+      try {
+        const res = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(args.join(" "))}`);
+        return `🔗 Link scurtat: ${res.data}`;
+      } catch {
+        return "❌ Nu s-a putut scurta link-ul.";
+      }
+
+    case "parola":
+      return "🔐 Parola ta este: " + Math.random().toString(36).slice(2, 10);
+
+    case "color":
+      return "🎨 Color: .color #ff0000";
+
+    case "ascii":
+      return "ASCII:\n  ___\n / _ \\\n| | |\n|_|_|\n";
+
+    case "reverse":
+      return reverseString(text || "hello");
+
+    case "invers":
+      return `🔁 Invers: ${reverseString(text || "bot")}`;
+
+    case "numara":
+      return `🔢 Număr cuvinte: ${text ? text.trim().split(/\\s+/).filter(Boolean).length : 0}`;
+
+    case "statistici":
+      return "📊 Statistici: .statistici";
+
+    case "info-grup":
+      if (!isGroup) return "⚠️ Comanda funcționează doar în grup.";
+      const groupInfo = await sock.groupMetadata(groupJid);
+      return `👥 Grup: ${groupInfo.subject}\nMembri: ${groupInfo.participants.length}`;
+
+    case "link-grup":
+      if (!isGroup) return "⚠️ Doar în grup.";
+      try {
+        const code = await sock.groupInviteCode(groupJid);
+        return `🔗 Link-ul grupului: https://chat.whatsapp.com/${code}`;
+      } catch {
+        return "⚠️ Nu am putut genera link-ul grupului.";
+      }
+
+    case "promoveaza":
+      return "⬆️ Promovează: .promoveaza @user";
+
+    case "retrogradeaza":
+      return "⬇️ Retrogradează: .retrogradeaza @user";
+
+    case "kick":
+      return "🚫 Kick: .kick @user";
+
+    case "welcome":
+      return "👋 Welcome: salut și bun venit!";
+
+    case "play":
+      if (!args.length) return "🎵 Folosește: .play nume melodie";
+      const video = await searchYoutube(args.join(" "));
+      if (!video) return "❌ Nu am găsit rezultate pe YouTube.";
+      return `🎵 ${video.title}\n🔗 ${video.url}`;
+
+    case "anime":
+      if (!args.length) return "📺 Folosește: .anime naruto";
+      const anime = await fetchJikan("anime", args.join(" "));
+      if (!anime) return "❌ Nu am găsit anime-ul cerut.";
+      return `📺 ${anime.title}\n⭐ Score: ${anime.score || "N/A"}\n🔗 ${anime.url}`;
+
+    case "manga":
+      if (!args.length) return "📚 Folosește: .manga one punch man";
+      const manga = await fetchJikan("manga", args.join(" "));
+      if (!manga) return "❌ Nu am găsit manga-ul cerut.";
+      return `📚 ${manga.title}\n⭐ Score: ${manga.score || "N/A"}\n🔗 ${manga.url}`;
+
+    case "waifu":
+      try {
+        const res = await axios.get("https://api.waifu.pics/sfw/waifu");
+        const url = res.data?.url;
+        if (!url) return "❌ Nu am găsit o waifu.";
+        await sock.sendMessage(groupJid || senderId, { image: { url } });
+        return null;
+      } catch {
+        return "⚠️ Serviciul waifu e momentan indisponibil.";
+      }
+
+    case "naruto":
+      return "🔥 Naruto: https://www.youtube.com/results?search_query=naruto+opening";
+
+    case "onepiece":
+      return "🏴‍☠️ One Piece: https://www.youtube.com/results?search_query=one+piece+opening";
+
+    case "akira":
+      return "🎬 Akira: https://www.youtube.com/results?search_query=akira+anime";
+
+    default:
+      return `❓ Comandă necunoscută: ${PREFIX}${command}\nScrie ${PREFIX}meniu pentru listă.`;
+  }
+}
+
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true,
+    browser: Browsers.macOS("Chrome")
+  });
+
+  sock.ev.on("connection.update", (update) => {
+    const { connection, lastDisconnect } = update;
+    if (connection === "close") {
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log("❌ Ai fost deconectat din WhatsApp.");
+      } else {
+        console.log("⚠️ Reconectare...");
+        startBot();
+      }
+    } else if (connection === "open") {
+      console.log("✅ Conectat la WhatsApp!");
+    }
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== "notify") return;
+
+    const msg = messages[0];
+    if (!msg?.message || msg.key.fromMe) return;
+
+    const remoteJid = msg.key.remoteJid;
+    const senderId = msg.key.participant || remoteJid;
+    const isGroup = remoteJid?.includes("@g.us");
+
+    const text =
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.ephemeralMessage?.message?.conversation ||
+      "";
+
+    if (!text.startsWith(PREFIX)) return;
+
+    const body = text.slice(PREFIX.length).trim();
+    const [command, ...args] = body.split(/\s+/);
+
+    try {
+      const result = await handleCommand({
+        sock,
+        msg,
+        command,
+        args,
+        senderId,
+        isGroup,
+        groupJid: remoteJid
+      });
+
+      if (result) {
+        await sock.sendMessage(remoteJid, { text: result });
+      }
+    } catch (error) {
+      console.error("Eroare:", error);
+      await sock.sendMessage(remoteJid, {
+        text: "⚠️ A apărut o eroare. Încearcă din nou."
+      });
+    }
+  });
+}
+
+startBot();
