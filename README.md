@@ -1,11 +1,17 @@
-# 🤖 RO-BOT-228 - WhatsApp Bot 24/7
-👑 Creat de **Cosmin46YT** - Craiova
+# 🔥 RO-BOT-228 - WhatsApp Bot 24/7
 
-### 🟢 BOT LIVE AICI (QR + COD TELEFON):
-👉 **https://ro-bot-228.onrender.com**
+👑 **Creat de Cosmin46YT - Craiova**
+🟢 **BOT ONLINE 24/7 pe Render**
 
-Apasa linkul de sus si o sa vezi:
-- 📷 **QR CODE** mare de scanat
-- 📱 **COD 8 CIFRE** pentru iPhone (Conecteaza cu numar de telefon)
+---
 
-### 📜 COMENZI 200+:
+### 👉 LINK DIRECT QR + COD TELEFON:
+## https://ro-bot-228.onrender.com
+
+> Intra pe link si ai pe ACEEASI PAGINA:
+> - 📷 **QR CODE** - Scaneaza: WhatsApp > 3 puncte > Dispozitive conectate
+> - 📱 **COD 8 CIFRE** - Bagi numarul 407xxxxxxxx si iti da codul pentru iPhone
+
+---
+
+### 📜 COMENZI PRINCIPALE:
