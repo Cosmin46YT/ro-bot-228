@@ -888,7 +888,7 @@ function promptPhoneNumber() {
     output: process.stdout
   });
 
-  rl.question("📱 Introdu numărul tău de telefon (format: 40XXXXXXXXX): ", (phone) => {
+  rl.question("📱 Introdu numărul tău de telefon (format: 40770811929): ", (phone) => {
     rl.question("🔐 Introdu codul de pereire din WhatsApp (6 cifre): ", (code) => {
       console.log(`\n✅ Configurare:\nTelefon: ${phone}\nCod: ${code}\n`);
       rl.close();
